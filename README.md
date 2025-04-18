@@ -2,12 +2,15 @@
 
 ## 📖 Overview
 
-This project is a simple real-time chat application built with **Node.js**, **Express**, **WebSockets**, and **Tailwind CSS**. It consists of two main components:
+This project is a simple real-time chat application built with **Node.js**, **WebSockets**, and **Tailwind CSS**. It consists of two main components:
 
 - **Client:** A static HTML/CSS/JavaScript interface that connects to the server via WebSockets to send and receive messages and display the list of connected users. 🤝
 - **Server:** A lightweight WebSocket server powered by the `ws` library that handles client connections, broadcasts messages, and manages user sessions. 💻
 
 The aim is to provide a clean, modular codebase that demonstrates core JavaScript concepts and real-time communication without the overhead of a full framework.
+
+![image](https://github.com/user-attachments/assets/a7d2f9a9-a2bd-4640-926c-a551fbdf2c96)
+
 
 ---
 
