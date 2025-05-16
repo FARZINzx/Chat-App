@@ -3,137 +3,267 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <!-- Tailwind CSS output -->
-    <link href="./output.css" rel="stylesheet"/>
+    <link href="output.css" rel="stylesheet"/>
     <title>WebSocket Chat</title>
 </head>
-<body class="h-screen bg-white">
-<main class="h-full grid grid-cols-4">
-    <!-- Sidebar: User List -->
-    <section class="col-span-1 bg-gray-200 border-r p-4">
-        <h2 class="text-lg font-semibold mb-4">Clients</h2>
-        <ul id="client-list" class="space-y-2 text-gray-700">
-            <!-- Dynamically populated list of connected clients -->
-            <li
-                    class="flex items-center gap-2 text-[#00A7BA] w-full h-full bg-slate-400"
-            >
-                <img
-                        src="/client/src/assets/images/avatar-boy.svg"
-                        width="50"
-                        height="50"
-                        alt="avatar-boy"
-                />
-                <div class="flex items-center gap-2">
-                    <p class="text-xl font-semibold">Farzin Hamzehi</p>
-                    <p class="text-xl font-semibold"></p>
-                </div>
-            </li>
-        </ul>
+<body class="h-screen bg-white overflow-hidden">
+<main class="h-full grid grid-cols-4 ">
+    <!-- Sidebar: Tabs -->
+    <section class="col-span-1 bg-gray-200 border-r p-4 ">
+        <h2 class="text-lg font-semibold mb-4">Chats</h2>
+        <div class="flex w-full gap-4 items-center mb-4">
+            <button id="tab-private" class="px-2 py-1 bg-white rounded w-full cursor-pointer">Private</button>
+            <button id="tab-group" class="px-2 py-1 bg-white rounded w-full cursor-pointer">Group</button>
+            <button id="tab-server" class="px-2 py-1 bg-red-100 rounded w-full cursor-pointer">Server</button>
+        </div>
+        <ul id="client-list" class="space-y-2 text-gray-700"></ul>
     </section>
     <!-- Chat Area -->
-    <section class="col-span-3 flex flex-col">
-        <!-- Messages Container -->
-        <div
-                id="messages"
-                class="flex-1 overflow-y-auto p-4 space-y-2 bg-white"
-        >
-            <!-- Incoming/outgoing messages will appear here -->
-        </div>
-
-        <!-- Message Input Form -->
+    <section class="col-span-3 flex flex-col max-h-screen">
+        <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-2 bg-white"></div>
         <form id="message-form" class="p-4 border-t flex gap-2">
-            <input
-                    id="message-input"
-                    type="text"
-                    placeholder="Type a message..."
-                    class="flex-1 border rounded-l px-4 py-2 focus:outline-none focus:ring"
-            />
-            <button
-                    type="submit"
-                    id="message-submit"
-                    class="bg-blue-500 text-white px-4 py-2 rounded-r hover:bg-blue-600 outline-0 active:scale-95 duration-300"
-            >
-                Send
-            </button>
+            <label for="message-input"></label><input id="message-input" type="text" placeholder="Type a message..."
+                                                      class="flex-1 border rounded-l px-4 py-2 outline-0"/>
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-r">Send</button>
         </form>
     </section>
 </main>
 <script>
-    const ws = new WebSocket("ws://localhost:8080");
-    const messagesDiv = document.getElementById("messages");
-    const clientsList = document.getElementById("client-list");
-    const form = document.getElementById("message-form");
-    const input = document.getElementById("message-input");
-    const messageBtn = document.getElementById("message-submit");
-
-    ws.onmessage = (event) => {
-        // 1) parse the JSON payload
-        let data;
-        try {
-            data = JSON.parse(event.data);
-        } catch (err) {
-            console.error("Non-JSON message:", event.data);
-            return;
-        }
-
-        // 2) handle by type
-        if (data.type === "clients") {
-            clientsList.innerHTML = "";
-            data.clients.forEach((client) => {
-                const li = document.createElement("li");
-                li.textContent = client;
-                clientsList.appendChild(li);
-            });
-
-        } else if (data.type === "port") {
-            console.log("Client port:", data.port);
-            document.querySelector("#client-port")
-                .textContent = `Your port: ${data.port}`;
-
-        } else if (data.type === "message") {
-            // 3) create a div and append
-            const messageEl = document.createElement("div");
-            messageEl.textContent = data.text;
-            messageEl.className = "p-2 bg-gray-200 rounded flex justify-start";
-            messagesDiv.appendChild(messageEl);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
+    // Connect explicitly to WS server on port 8080
+    // const ws = new WebSocket(`ws://${location.hostname}:8080`);
+    const messagesDiv = document.getElementById('messages');
+    const clientsList = document.getElementById('client-list');
+    const form = document.getElementById('message-form');
+    const input = document.getElementById('message-input');
+    const tabs = {
+        private: document.getElementById('tab-private'),
+        group: document.getElementById('tab-group'),
+        server: document.getElementById('tab-server'),
     };
 
-    const sendMessage = () => {
-        const text = input.value.trim();
-        if (text && ws.readyState === WebSocket.OPEN) {
-            // send as JSON
-            ws.send(JSON.stringify({type: "message", text, sender: "client"}));
+    let ws;
+    let myPort;
+    let currentTab = 'server';
+    let selectedPort = null;
+    let reconnectAttempts = 0;
+    const maxBackoff = 30000; // 30s
 
-            // locally echo it
-            const messageEl = document.createElement("div");
-            messageEl.textContent = text;
-            messageEl.className =
-                "p-2 bg-blue-100 text-blue-800 rounded flex justify-end";
-            messagesDiv.appendChild(messageEl);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            input.value = "";
+    function addMessage(html, clazz = 'bg-gray-100') {
+        const div = document.createElement('div');
+        div.className = `p-2 rounded ${clazz}`;
+        div.innerHTML = html;
+        messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function setUpSocket() {
+        const delay = Math.min(1000 * 2 ** reconnectAttempts, maxBackoff);
+        addMessage(`<em>Attempting to connect in ${delay / 1000}s…</em>`, 'bg-gray-50');
+
+        setTimeout(() => {
+            ws = new WebSocket(`ws://${location.hostname}:8080`);
+
+            ws.onopen = () => {
+                reconnectAttempts = 0
+                addMessage('<em>Connected to server</em>', 'bg-green-100');
+            }
+            ws.onmessage = onMessage
+            ws.onerror = err => addMessage(`<em>${err}</em>`, 'bg-red-100')
+            ws.onclose = () => {
+                reconnectAttempts++
+                addMessage('<em>Connection lost.</em>', 'bg-red-100');
+                setUpSocket()
+            }
+        }, delay)
+    }
+
+    function onMessage({data}) {
+        const msg = JSON.parse(data);
+        switch (msg.type) {
+            case 'welcome':
+                myPort = msg.port;
+                addMessage(`Assigned port <strong>${myPort}</strong>`, 'bg-green-100');
+                break;
+            case 'clients':
+                renderClientList(msg.clients);
+                break;
+            case 'server':
+                if (currentTab === 'server')
+                    addMessage(`[${msg.time}] Server: ${msg.text}`, 'bg-yellow-100');
+                break;
+            case 'private':
+                const sender = msg.fromName === 'You'
+                    ? 'You'
+                    : `${msg.fromName} (${msg.fromPort})`;
+                addMessage(`[${msg.time}] ${sender}: ${msg.text}`, 'bg-blue-50');
+                tabs.private.classList.remove('bg-white');
+                tabs.private.classList.add('bg-blue-100');
+                tabs.group.classList.remove('bg-yellow-100');
+                tabs.group.classList.add('bg-white');
+                tabs.server.classList.remove('bg-red-100');
+                tabs.server.classList.add('bg-white');
+                break;
+            case 'group':
+                if (currentTab === 'group')
+                    addMessage(`[${msg.time}] ${msg.fromName} (${msg.fromPort}): ${msg.text}`, 'bg-purple-100');
+                break;
+            case 'info':
+                addMessage(`<em>${msg.text}</em>`, 'bg-orange-200');
+                break;
         }
     }
 
-    messageBtn.addEventListener('keydown', (event) => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            sendMessage();
-        }
-    })
+    function renderClientList(list) {
+        clientsList.innerHTML = '';
+        selectedPort = null;
+        list.forEach(({port, name}) => {
+            const li = document.createElement('li');
+            li.className = `flex items-center gap-2 p-2 rounded cursor-pointer ${myPort === port ? "bg-blue-100" : ""} hover:bg-blue-200 relative`
+            li.textContent = `${name} (${port})`;
+            if (myPort === port) {
+                const minPort = document.createElement('span');
+                minPort.className = `px-2 bg-blue-100 text-blue-300 absolute top-1/2 -translate-y-1/2 right-3 rounded ${port}`;
+                minPort.textContent = 'Me';
+                li.appendChild(minPort);
+            }
+            li.dataset.port = port;
+            li.onclick = () => {
+                selectedPort = port;
+                Array.from(clientsList.children).forEach(el => el.classList.remove('bg-blue-300'));
+                li.classList.add('bg-blue-300');
+                currentTab = 'private';
+                addMessage(`<em>Private chat ➔ ${name}</em>`, 'bg-gray-50');
+            };
+            clientsList.appendChild(li);
+        });
+    }
 
+    // ws.onmessage = ({ data }) => {
+    //     const msg = JSON.parse(data);
+    //     switch (msg.type) {
+    //         case 'welcome':
+    //             myPort = msg.port;
+    //             addMessage(`Connected on port <strong>${myPort}</strong>`, 'bg-green-100');
+    //             break;
+    //         case 'clients':
+    //             clientsList.innerHTML = '';
+    //             selectedPort = null;
+    //             msg.clients.forEach(({ port, name }) => {
+    //                 if (port === myPort) return;
+    //                 const li = document.createElement('li');
+    //                 li.className = 'flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-blue-200';
+    //                 li.textContent = `${name} (${port})`;
+    //                 li.dataset.port = port;
+    //                 li.addEventListener('click', () => {
+    //                     selectedPort = port;
+    //                     Array.from(clientsList.children).forEach(el => el.classList.remove('bg-blue-300'));
+    //                     li.classList.add('bg-blue-300');
+    //                     currentTab = 'private';
+    //                     addMessage(`<em>Selected ${name} for private chat</em>`, 'bg-gray-50');
+    //                 });
+    //                 clientsList.appendChild(li);
+    //             });
+    //             break;
+    //         case 'server':
+    //             if (currentTab === 'server')
+    //                 addMessage(`[${msg.time}] Server: ${msg.text}`, 'bg-yellow-100');
+    //             break;
+    //         case 'private':
+    //             if (currentTab === 'private') {
+    //                 const sender = msg.fromName === 'You' ? 'You' : `${msg.fromName} (${msg.fromPort})`;
+    //                 addMessage(`[${msg.time}] ${sender}: ${msg.text}`, 'bg-blue-50');
+    //             }
+    //             break;
+    //         case 'group':
+    //             if (currentTab === 'group')
+    //                 addMessage(`[${msg.time}] ${msg.fromName} (${msg.fromPort}): ${msg.text}`, 'bg-purple-100');
+    //             break;
+    //         case 'info':
+    //             addMessage(`<em>${msg.text}</em>`, 'bg-gray-50');
+    //             break;
+    //     }
+    // };
 
-    form.addEventListener("submit", (e) => {
+    form.addEventListener('submit', e => {
         e.preventDefault();
-        sendMessage()
+        const text = input.value.trim();
+        if (!text || ws.readyState !== WebSocket.OPEN) return;
+        const payload = {type: currentTab, text};
+        if (currentTab === 'private') {
+            if (!selectedPort) {
+                return addMessage('<em>Select a user first</em>', 'bg-red-100');
+            }
+            payload.toPort = selectedPort;
+        }
+        ws.send(JSON.stringify(payload));
+        input.value = '';
     });
 
-    ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-    };
-</script>
+    // form.addEventListener('submit', e => {
+    //     e.preventDefault();
+    //     const text = input.value.trim();
+    //     if (!text) return;
+    //     if (currentTab === 'private') {
+    //         if (!selectedPort) {
+    //             addMessage('<em>Please select a user for private chat</em>', 'bg-red-100');
+    //         } else {
+    //             ws.send(JSON.stringify({ type: 'private', toPort: selectedPort, text }));
+    //         }
+    //     } else if (currentTab === 'group') {
+    //         ws.send(JSON.stringify({ type: 'group', text }));
+    //     } else if (currentTab === 'server') {
+    //         ws.send(JSON.stringify({ type: 'message', text }));
+    //     }
+    //     input.value = '';
+    // });
 
+    Object.entries(tabs).forEach(([tab, btn]) => {
+        btn.onclick = () => {
+            currentTab = tab;
+            // reset all
+            btn.classList.replace('bg-white', {
+                private: 'bg-blue-100',
+                group: 'bg-yellow-100',
+                server: 'bg-red-100'
+            }[tab]);
+            Object.values(tabs).forEach(b => {
+                if (b === btn) return;
+                b.classList.remove('bg-blue-100', 'bg-yellow-100', 'bg-red-100');
+                b.classList.add('bg-white');
+            });
+            addMessage(`<em>Switched to ${tab} chat.</em>`, 'bg-gray-50');
+        };
+    });
+
+    // Kick off first connection
+    setUpSocket();
+
+    // [tabPrivate, tabGroup, tabServer].forEach(btn => btn.addEventListener('click', () => {
+    //     currentTab = btn.id.split('-')[1];
+    //     if(currentTab === 'private'){
+    //         tabPrivate.classList.remove('bg-white');
+    //         tabPrivate.classList.add('bg-blue-100');
+    //         tabGroup.classList.add('bg-white');
+    //         tabServer.classList.add('bg-white');
+    //         tabGroup.classList.remove('bg-yellow-100');
+    //         tabServer.classList.remove('bg-red-100');
+    //     }else if(currentTab === 'group'){
+    //         tabGroup.classList.remove('bg-white');
+    //         tabGroup.classList.add('bg-yellow-100');
+    //         tabPrivate.classList.add('bg-white');
+    //         tabServer.classList.add('bg-white');
+    //         tabPrivate.classList.remove('bg-blue-100');
+    //         tabServer.classList.remove('bg-red-100');
+    //     }else{
+    //         tabServer.classList.remove('bg-white');
+    //         tabServer.classList.add('bg-red-100');
+    //         tabPrivate.classList.add('bg-white');
+    //         tabGroup.classList.add('bg-white');
+    //         tabGroup.classList.remove('bg-yellow-100');
+    //         tabPrivate.classList.remove('bg-blue-100');
+    //     }
+    //     addMessage(`<em>Switched to ${currentTab} chat.</em>`, 'bg-gray-50');
+    // }));
+</script>
 </body>
 </html>
