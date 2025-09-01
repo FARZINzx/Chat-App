@@ -10,12 +10,13 @@
 <main class="h-full grid grid-cols-4 ">
     <!-- Sidebar: Tabs -->
     <section class="col-span-1 bg-gray-200 border-r p-4 ">
-        <h2 class="text-lg font-semibold mb-4">Chats</h2>
-        <div class="flex w-full gap-4 items-center mb-4">
+         <h2 class="text-lg font-semibold mb-4">Actions</h2>
+        <div class="flex flex-col md:flex-row w-full gap-4 items-center mb-4">
             <button id="tab-private" class="px-2 py-1 bg-white rounded w-full cursor-pointer">Private</button>
             <button id="tab-group" class="px-2 py-1 bg-white rounded w-full cursor-pointer">Group</button>
-            <button id="tab-server" class="px-2 py-1 bg-red-100 rounded w-full cursor-pointer">Server</button>
+            <button id="tab-server" class="px-2 py-1 bg-green-200 rounded w-full cursor-pointer">Server</button>
         </div>
+        <h2 class="text-lg font-semibold mb-4">Chats</h2>
         <ul id="client-list" class="space-y-2 text-gray-700"></ul>
     </section>
     <!-- Chat Area -->
@@ -58,20 +59,20 @@
 
     function setUpSocket() {
         const delay = Math.min(1000 * 2 ** reconnectAttempts, maxBackoff);
-        addMessage(`<em>Attempting to connect in ${delay / 1000}s…</em>`, 'bg-gray-50');
+        addMessage(`<em>Attempting to connect in ${delay / 1000}s…</em>`, 'bg-gray-100');
 
         setTimeout(() => {
             ws = new WebSocket(`ws://${location.hostname}:8080`);
 
             ws.onopen = () => {
                 reconnectAttempts = 0
-                addMessage('<em>Connected to server</em>', 'bg-green-100');
+                addMessage('<em>Connected to server</em>', 'bg-green-200');
             }
             ws.onmessage = onMessage
-            ws.onerror = err => addMessage(`<em>${err}</em>`, 'bg-red-100')
+            ws.onerror = err => addMessage(`<em>${err}</em>`, 'bg-red-200')
             ws.onclose = () => {
                 reconnectAttempts++
-                addMessage('<em>Connection lost.</em>', 'bg-red-100');
+                addMessage('<em>Connection lost.</em>', 'bg-red-200');
                 setUpSocket()
             }
         }, delay)
@@ -89,18 +90,18 @@
                 break;
             case 'server':
                 if (currentTab === 'server')
-                    addMessage(`[${msg.time}] Server: ${msg.text}`, 'bg-yellow-100');
+                    addMessage(`[${msg.time}] Server: ${msg.text}`, 'bg-yellow-200');
                 break;
             case 'private':
                 const sender = msg.fromName === 'You'
                     ? 'You'
                     : `${msg.fromName} (${msg.fromPort})`;
-                addMessage(`[${msg.time}] ${sender}: ${msg.text}`, 'bg-blue-50');
+                addMessage(`[${msg.time}] ${sender}: ${msg.text}`, 'bg-blue-100');
                 tabs.private.classList.remove('bg-white');
-                tabs.private.classList.add('bg-blue-100');
-                tabs.group.classList.remove('bg-yellow-100');
+                tabs.private.classList.add('bg-blue-200');
+                tabs.group.classList.remove('bg-yellow-200');
                 tabs.group.classList.add('bg-white');
-                tabs.server.classList.remove('bg-red-100');
+                tabs.server.classList.remove('bg-green-200');
                 tabs.server.classList.add('bg-white');
                 break;
             case 'group':
@@ -122,7 +123,7 @@
             li.textContent = `${name} (${port})`;
             if (myPort === port) {
                 const minPort = document.createElement('span');
-                minPort.className = `px-2 bg-blue-100 text-blue-300 absolute top-1/2 -translate-y-1/2 right-3 rounded ${port}`;
+                minPort.className = `px-2 bg-blue-300 text-blue-100 absolute top-1/2 -translate-y-1/2 right-3 rounded ${port}`;
                 minPort.textContent = 'Me';
                 li.appendChild(minPort);
             }
@@ -159,9 +160,9 @@
             currentTab = tab;
             // reset all
             btn.classList.replace('bg-white', {
-                private: 'bg-blue-100',
-                group: 'bg-yellow-100',
-                server: 'bg-red-100'
+                private: 'bg-blue-200',
+                group: 'bg-yellow-200',
+                server: 'bg-red-200'
             }[tab]);
             Object.values(tabs).forEach(b => {
                 if (b === btn) return;
